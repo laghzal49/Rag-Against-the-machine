@@ -1,0 +1,4 @@
+[flake8]
+exclude = .venv,data,.git,__pycache__
+max-line-length = 79
+extend-ignore = E203
