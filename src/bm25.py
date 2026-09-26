@@ -2,17 +2,13 @@
 
 import math
 import pickle
-import re
-from pathlib import Path
 from collections import Counter, defaultdict
 from typing import Any
 
 from tqdm import tqdm
 
 from .modele import Chunk, MinimalSource
-from .stop_word import STOP_WORD
-
-PATTERN = r"\b\w+\b"
+from .tokenizer import tokenize
 
 
 def validate_k(k: int) -> None:
@@ -25,65 +21,43 @@ class Bm25:
     """Rank chunks using term frequency and document length normalization."""
 
     def __init__(
-        self, chunks: list[Chunk], k: float = 1.5, b: float = 0.5
+        self,
+        corpus: dict[int, list[str]],
+        avgdl: float,
+        N: int,
+        doc_len: dict[int, int],
+        chunks: list[Chunk],
+        k: float = 1.5,
+        b: float = 0.5,
     ) -> None:
         """Build postings from chunks with valid BM25 parameters.
 
         Args:
+            corpus: Tokenized passages keyed by chunk ID.
+            avgdl: Mean passage length in tokens.
+            N: Number of passages.
+            doc_len: Token length of each passage.
             chunks: Source passages to index.
             k: Positive term-frequency saturation parameter.
             b: Length normalization parameter between zero and one.
         """
-        if k <= 0 or not 0 <= b <= 1:
+        if (
+            not math.isfinite(k) or k <= 0
+            or not math.isfinite(b) or not 0 <= b <= 1
+        ):
             raise ValueError("BM25 requires finite k > 0 and 0 <= b <= 1")
-        self.chunks: list[Chunk] = chunks
         self.k1: float = k
         self.b: float = b
-        self.N: int = len(self.chunks)
-        self.corpus: list[list[str]] = [
-            self.tokenize(doc.text) + self.tokenize(doc.file_path)
-            for doc in tqdm(
-                self.chunks, desc="Tokenizing chunks", unit="chunk"
-            )
-        ]
-        self.avgdl: float = (
-            sum(len(chunk) for chunk in self.corpus) / self.N if self.N else 0
-        )
-        self.doc_len: dict[int, int] = {
-            i: len(doc) for i, doc in enumerate(self.corpus)
-        }
+        self.corpus = corpus
+        self.avgdl = avgdl
+        self.chunks = chunks
         self.inverted: dict[str, dict[int, int]] = self.build_inverted_index()
-
-    def tokenize(self, text: str) -> list[str]:
-        """Extract lowercase words, excluding common English stopwords.
-
-        Args:
-            text: Source text, path, or query to analyze.
-
-        Returns:
-            Tokens in occurrence order, including repeated words.
-        """
-        tokens = []
-        for token in re.findall(PATTERN, text):
-            tokens.append(token.lower())
-            expanded = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", token)
-            parts = expanded.replace("_", " ").lower().split()
-            if len(parts) > 1:
-                tokens.extend(parts)
-        new = []
-        for token in tokens:
-            if token in STOP_WORD:
-                continue
-            new.append(token)
-        return new
+        self.doc_len = doc_len
+        self.N = N
 
     @property
     def index_data(self) -> dict[str, Any]:
-        """Return the state needed to restore retrieval without rebuilding.
-
-        Returns:
-            Chunk, posting, length, and scoring parameter dictionary.
-        """
+        """Return the state required to restore retrieval."""
         return {
             "chunks": self.chunks,
             "inverted": self.inverted,
@@ -94,20 +68,6 @@ class Bm25:
             "N": self.N,
         }
 
-    def save_index(self, path: str) -> None:
-        """Save a local pickle directly, creating parent directories.
-
-        Args:
-            path: Destination index file.
-
-        Raises:
-            OSError: If the destination directory or index cannot be written.
-        """
-        target = Path(path)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        with open(target, "wb") as f:
-            pickle.dump(self.index_data, f)
-
     def build_inverted_index(self) -> dict[str, dict[int, int]]:
         """Map each term to its frequency in each containing chunk.
 
@@ -115,8 +75,8 @@ class Bm25:
             Term-to-postings mapping with document IDs and frequencies.
         """
         invert: defaultdict[str, dict[int, int]] = defaultdict(dict)
-        for doc_id, doc in enumerate(
-            tqdm(self.corpus, desc="Building index", unit="chunk")
+        for doc_id, doc in tqdm(
+            self.corpus.items(), desc="Building index", unit="chunk"
         ):
             frequencies = Counter(doc)
             for word, f in frequencies.items():
@@ -174,7 +134,7 @@ class Bm25:
         validate_k(top_k)
         if top_k == 0:
             return []
-        terms = self.tokenize(query)
+        terms = tokenize(query)
         scores = self.score(terms)
         ranked = sorted(
             scores.items(), key=lambda score: score[1], reverse=True

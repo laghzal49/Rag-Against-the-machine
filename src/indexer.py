@@ -1,5 +1,6 @@
 """Discover source files, chunk their exact text, and build a BM25 index."""
 
+import pickle
 from pathlib import Path
 
 from tqdm import tqdm
@@ -9,6 +10,7 @@ from .bm25 import Bm25
 from .modele import Chunk
 from .file_reader import read_source_file
 from .chunking import _validate_options
+from .tokenizer import tokenize
 
 
 class Indexer:
@@ -37,7 +39,21 @@ class Indexer:
         self.paths: list[Path] = self.find_files(path)
         self.max_size: int = max_size_chunks
         self.chunks: list[Chunk] = self.chunk_all_files()
-        self.bm25: Bm25 = Bm25(self.chunks, k=k, b=b)
+        self.N = len(self.chunks)
+        self.corpus = {
+            doc_id: tokenize(doc.text) + tokenize(doc.file_path)
+            for doc_id, doc in tqdm(
+                enumerate(self.chunks), desc="Tokenizing chunks", unit="chunk"
+            )
+        }
+        self.doc_len = {
+            doc_id: len(doc) for doc_id, doc in self.corpus.items()
+        }
+        self.avgdl = sum(self.doc_len.values()) / self.N if self.N else 0
+        self.bm25: Bm25 = Bm25(
+            self.corpus, self.avgdl, self.N, self.doc_len,
+            self.chunks, k=k, b=b,
+        )
 
     def dfs_file(self, path: Path) -> list[Path]:
         """Walk files deterministically, skipping symbolic links.
@@ -126,16 +142,18 @@ class Indexer:
                         max_chunk_size=self.max_size,
                     )
                 )
-
         return chunks
 
     def save(self, path: str) -> None:
-        """Persist the completed BM25 index at the requested path.
+        """Save a local pickle directly, creating parent directories.
 
         Args:
             path: Destination index file.
 
         Raises:
-            OSError: If the index cannot be saved.
+            OSError: If the destination directory or index cannot be written.
         """
-        self.bm25.save_index(path)
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with open(target, "wb") as f:
+            pickle.dump(self.bm25.index_data, f)

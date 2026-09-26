@@ -1,0 +1,28 @@
+import re
+from .stop_word import STOP_WORD
+
+PATTERN = r"\b\w+\b"
+
+
+def tokenize(text: str) -> list[str]:
+    """Extract lowercase words, excluding common English stopwords.
+
+    Args:
+        text: Source text, path, or query to analyze.
+
+    Returns:
+        Tokens in occurrence order, including repeated words.
+    """
+    tokens = []
+    for token in re.findall(PATTERN, text):
+        tokens.append(token.lower())
+        expanded = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", token)
+        parts = expanded.replace("_", " ").lower().split(" ")
+        if len(parts) > 1:
+            tokens.extend(parts)
+    new = []
+    for token in tokens:
+        if token in STOP_WORD:
+            continue
+        new.append(token)
+    return new

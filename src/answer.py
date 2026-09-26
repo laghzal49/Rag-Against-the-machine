@@ -1,11 +1,12 @@
 """Generate grounded answers with a local language model."""
 
-from typing import Any
 from pathlib import Path
 
 from tqdm import tqdm
-from transformers import pipeline
-
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+)
 from .file_reader import read_source_file
 from .modele import (
     MinimalSource,
@@ -20,13 +21,20 @@ from .retrieval import Retrieval
 class Answer:
     """Generate grounded answers from retrieved source passages."""
 
-    def __init__(self, model_name: str = "Qwen/Qwen3-0.6B") -> None:
+    def __init__(
+        self, model_name: str = "Qwen/Qwen3-0.6B", max_new_tokens: int = 150
+    ) -> None:
         """Initialize the text generation pipeline.
 
         Args:
             model_name: Hugging Face model ID or local model directory.
+            max_new_tokens: Maximum number of tokens to generate.
         """
-        self.pipe: Any = pipeline("text-generation", model=model_name)
+        self.model_name = model_name
+        self.max_new_tokens = max_new_tokens
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+        self.model = AutoModelForCausalLM.from_pretrained(self.model_name)
+        self.tokenizer.truncation_side = "left"
 
     def generate(self, question: UnansweredQuestion, context: str) -> str:
         """Answer from cited context or abstain when evidence is empty.
@@ -56,14 +64,29 @@ class Answer:
                 ),
             },
         ]
-        text = self.pipe.tokenizer.apply_chat_template(
+        text = self.tokenizer.apply_chat_template(
             messages,
             tokenize=False,
             add_generation_prompt=True,
             enable_thinking=False,
         )
-        out = self.pipe(text, max_new_tokens=150, return_full_text=False)
-        return str(out[0]["generated_text"]).strip()
+        inputs = self.tokenizer(
+            text,
+            return_tensors="pt",
+            truncation=True,
+            max_length=self.model.config.max_position_embeddings
+            - self.max_new_tokens,
+        )
+        output = self.model.generate(
+            **inputs, max_new_tokens=self.max_new_tokens
+        )
+        inputs_len = inputs["input_ids"].shape[1]
+        generated = output[0][inputs_len:]
+        dec = self.tokenizer.decode(
+            generated,
+            skip_special_tokens=True,
+        )
+        return dec
 
     def context(
         self, question: UnansweredQuestion, k: int, re: Retrieval
