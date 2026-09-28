@@ -1,8 +1,8 @@
 """Read exact source text and validate dataset JSON input and output."""
 
-from .modele import StudentSearchResults
+from ..models import StudentSearchResults
 from pathlib import Path
-from .modele import StudentSearchResultsAndAnswer
+from ..models import StudentSearchResultsAndAnswer
 from pydantic import ValidationError
 import json
 

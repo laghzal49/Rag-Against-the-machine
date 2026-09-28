@@ -3,7 +3,7 @@
 import tree_sitter_python as ts_python
 from tree_sitter import Language, Parser, Node
 
-from .modele import Chunk
+from ..models import Chunk
 
 
 DEFAULT_MAX_CHUNK_SIZE = 2000

@@ -134,13 +134,14 @@ arguments.
 
 | Path | Responsibility |
 | --- | --- |
-| `src/chunking.py` | Python AST and text-window chunking |
-| `src/bm25.py` | Tokenization, postings, ranking, persistence |
-| `src/indexer.py` | Corpus discovery and index construction |
-| `src/retrieval.py` | Single and batch retrieval |
-| `src/answer.py` | Context construction and local generation |
-| `src/eval.py` | Character-span recall evaluation |
-| `src/modele.py` | Pydantic data contracts |
+| `src/chunking/splitters.py` | Python AST and text-window chunking |
+| `src/retrieval/bm25.py` | Tokenization, postings, ranking, persistence |
+| `src/indexing/indexer.py` | Corpus discovery and index construction |
+| `src/retrieval/search.py` | Single and batch retrieval |
+| `src/generation/` | Validated source context and local generation |
+| `src/io/` | Exact source reads and dataset JSON input/output |
+| `src/evaluation/metrics.py` | Character-span recall evaluation |
+| `src/models/schemas.py` | Pydantic data contracts |
 | `src/cli.py` | Fire command-line interface |
 | `demo/corpus/` | Small reproducible corpus |
 | `SMOKE_TEST.md` | Final verification checklist |
@@ -163,6 +164,9 @@ in `SMOKE_TEST.md` to reproduce the demo and rerun official evaluation.
   committed.
 
 ## Development
+
+Search for `TODO:` in `src/`, `tests/`, and `Makefile` for improvements
+listed beside the code that needs changing.
 
 ```bash
 make install

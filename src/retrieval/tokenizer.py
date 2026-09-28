@@ -1,5 +1,5 @@
 import re
-from .stop_word import STOP_WORD
+from ..retrieval.stop_words import STOP_WORD
 
 PATTERN = r"\b\w+\b"
 
@@ -13,6 +13,8 @@ def tokenize(text: str) -> list[str]:
     Returns:
         Tokens in occurrence order, including repeated words.
     """
+    # TODO: Inspect measured retrieval misses before tuning token splitting;
+    # compare recall@5/@10 against a fixed, separately evaluated baseline.
     tokens = []
     for token in re.findall(PATTERN, text):
         tokens.append(token.lower())

@@ -7,8 +7,8 @@ from typing import Any
 
 from tqdm import tqdm
 
-from .modele import Chunk, MinimalSource
-from .tokenizer import tokenize
+from ..models import Chunk, MinimalSource
+from ..retrieval.tokenizer import tokenize
 
 
 def validate_k(k: int) -> None:
@@ -172,6 +172,7 @@ class Bm25:
             raise OSError(f"Cannot read index {path}: {error}") from error
         except (
             pickle.UnpicklingError,
+            EOFError,
             ImportError,
             AttributeError,
             ValueError,
@@ -186,6 +187,8 @@ class Bm25:
                 f"Invalid index structure in {path}. "
                 "Run `index` to rebuild it."
             )
+        # TODO: Validate state types, chunk/posting IDs, lengths and finite
+        # parameters; reject incompatible versions with rebuild instructions.
         obj = cls.__new__(cls)
         obj.chunks = info["chunks"]
         obj.N = info["N"]

@@ -5,12 +5,12 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-from .chunking import chunk_python_file, chunk_text, DEFAULT_MAX_CHUNK_SIZE
-from .bm25 import Bm25
-from .modele import Chunk
-from .file_reader import read_source_file
-from .chunking import _validate_options
-from .tokenizer import tokenize
+from ..chunking import chunk_python_file, chunk_text, DEFAULT_MAX_CHUNK_SIZE
+from ..retrieval.bm25 import Bm25
+from ..models import Chunk
+from ..io import read_source_file
+from ..chunking import _validate_options
+from ..retrieval.tokenizer import tokenize
 
 
 class Indexer:
@@ -38,6 +38,8 @@ class Indexer:
         self.path: str = path
         self.paths: list[Path] = self.find_files(path)
         self.max_size: int = max_size_chunks
+        # TODO: Persist source fingerprints and a versioned index format;
+        # carry verification metadata through retrieval to context building.
         self.chunks: list[Chunk] = self.chunk_all_files()
         self.N = len(self.chunks)
         self.corpus = {
@@ -155,5 +157,7 @@ class Indexer:
         """
         target = Path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
+        # TODO: Write a temporary sibling file, then atomically replace the
+        # target. Test that a failed save preserves the previous index.
         with open(target, "wb") as f:
             pickle.dump(self.bm25.index_data, f)

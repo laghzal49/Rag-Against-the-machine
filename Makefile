@@ -1,3 +1,6 @@
+# TODO: Add a test target and .github/workflows/ci.yml for locked installs,
+# unittest discovery, lint and types. Fix learn/ issues while keeping
+# intentionally unfinished exercise tests separate from application tests.
 .PHONY: install run debug clean lint
 ARGS ?= --help
 install:

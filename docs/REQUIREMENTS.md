@@ -8,7 +8,7 @@ an assignment subject or hidden evaluation datasets.
 | CLI | Six Fire commands in `src/cli.py` | Target-environment checks |
 | Style and types | `make lint` runs flake8 and mypy | Re-run after edits |
 | Error handling | CLI boundary, input validation, file context managers | Environment-specific failures |
-| Data models | Pydantic models in `src/modele.py` | Hidden dataset compatibility |
+| Data models | Pydantic models in `src/models/schemas.py` | Hidden dataset compatibility |
 | Chunking | Tree-sitter Python nodes; overlapping text windows | Python chunks can omit text between nodes |
 | Chunk sizes | Integer limit from 1 to 2,000 characters | Corpus-specific retrieval quality |
 | Retrieval | BM25 with path and identifier tokenization | Hidden dataset quality |

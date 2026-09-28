@@ -1,19 +1,21 @@
 """Expose indexing, retrieval, generation, and evaluation through Fire."""
 
-from .modele import RagDataset
-from .indexer import Indexer
-from .bm25 import Bm25, validate_k
+from .models import RagDataset
+from .indexing import Indexer
+from .retrieval.bm25 import Bm25, validate_k
 from pathlib import Path
-from .answer import Answer
-from .retrieval import Retrieval
-from .modele import (
+from .generation import Answer
+from .retrieval import one_question, multiple_question
+from .models import (
     UnansweredQuestion,
     StudentSearchResults,
 )
-from .eval import evaluate_dataset
-from .file_reader import read_json_file, save_json
+from .evaluation import evaluate_dataset
+from .io import read_json_file, save_json
 
 
+# TODO: Add CLI integration tests for all six commands, dataset IDs,
+# duplicate IDs, invalid k, missing files, and concise error responses.
 class Cli:
     """Provide the six command-line operations for the RAG pipeline."""
 
@@ -29,7 +31,6 @@ class Cli:
             query: Natural-language search query.
             k: Maximum number of sources to return.
             index_path: Path to a trusted local BM25 index.
-            output_path: Destination JSON file.
 
         Raises:
             FileNotFoundError: If the index does not exist.
@@ -43,8 +44,8 @@ class Cli:
                 f"Index not found: {index}. Run `index` first."
             )
         bm25 = Bm25.load_index(str(index_path))
-        result = Retrieval(bm25).one_question(
-            UnansweredQuestion(question=str(query)), k
+        result = one_question(
+            UnansweredQuestion(question=str(query)), k, bm25
         )
         output = StudentSearchResults(search_results=[result], k=k)
         print(output.model_dump_json(indent=2))
@@ -82,7 +83,6 @@ class Cli:
             question: Question to answer from retrieved evidence.
             k: Maximum number of evidence sources.
             index_path: Path to a trusted local BM25 index.
-            output_path: Destination JSON file.
 
         Raises:
             FileNotFoundError: If the index does not exist.
@@ -95,8 +95,8 @@ class Cli:
                 f"Index not found: {index}. Run `index` first."
             )
         bm25 = Bm25.load_index(str(index_path))
-        result = Retrieval(bm25).one_question(
-            UnansweredQuestion(question=str(question)), k
+        result = one_question(
+            UnansweredQuestion(question=str(question)), k, bm25
         )
         output = Answer().generate_dataset(
             StudentSearchResults(search_results=[result], k=k)
@@ -131,12 +131,11 @@ class Cli:
                 f"Index not found: {index}. Run `index` first."
             )
         bm25 = Bm25.load_index(str(index_path))
-        re = Retrieval(bm25)
         data = read_json_file(dataset_path, RagDataset)
         ids = [question.question_id for question in data.rag_questions]
         if len(ids) != len(set(ids)):
             raise ValueError("Duplicate question IDs in input dataset")
-        output = re.multiple_question(data_set=data, k=k)
+        output = multiple_question(data_set=data, k=k, bm25=bm25)
         save_json(save_directory, output, dataset_path)
 
     def answer_dataset(
@@ -181,6 +180,8 @@ class Cli:
             student_search_results_path, StudentSearchResults
         )
         data = read_json_file(dataset_path, RagDataset)
+        # TODO: Benchmark official datasets at k=5 and k=10; document corpus,
+        # commit, environment, recall, time and memory in docs/BENCHMARKS.md.
         result = evaluate_dataset(
             data.rag_questions,
             search.search_results,

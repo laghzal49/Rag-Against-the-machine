@@ -13,8 +13,18 @@ def main() -> int:
     Returns:
         Zero on success, one on failure, or 130 on interruption.
     """
+    cli = Cli()
     try:
-        fire.Fire(Cli)
+        fire.Fire(
+            {
+                "search": cli.search,
+                "index": cli.index,
+                "answer": cli.answer,
+                "search_dataset": cli.search_dataset,
+                "answer_dataset": cli.answer_dataset,
+                "evaluate": cli.evaluate,
+            }
+        )
     except KeyboardInterrupt:
         print("Interrupted.", file=sys.stderr)
         return 130
