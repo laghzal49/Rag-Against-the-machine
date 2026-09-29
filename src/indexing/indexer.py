@@ -1,6 +1,8 @@
 """Discover source files, chunk their exact text, and build a BM25 index."""
 
+import os
 import pickle
+import tempfile
 from pathlib import Path
 
 from tqdm import tqdm
@@ -38,8 +40,6 @@ class Indexer:
         self.path: str = path
         self.paths: list[Path] = self.find_files(path)
         self.max_size: int = max_size_chunks
-        # TODO: Persist source fingerprints and a versioned index format;
-        # carry verification metadata through retrieval to context building.
         self.chunks: list[Chunk] = self.chunk_all_files()
         self.N = len(self.chunks)
         self.corpus = {
@@ -53,8 +53,13 @@ class Indexer:
         }
         self.avgdl = sum(self.doc_len.values()) / self.N if self.N else 0
         self.bm25: Bm25 = Bm25(
-            self.corpus, self.avgdl, self.N, self.doc_len,
-            self.chunks, k=k, b=b,
+            self.corpus,
+            self.avgdl,
+            self.N,
+            self.doc_len,
+            self.chunks,
+            k=k,
+            b=b,
         )
 
     def dfs_file(self, path: Path) -> list[Path]:
@@ -147,7 +152,7 @@ class Indexer:
         return chunks
 
     def save(self, path: str) -> None:
-        """Save a local pickle directly, creating parent directories.
+        """Save an index atomically, creating its parent directory.
 
         Args:
             path: Destination index file.
@@ -157,7 +162,15 @@ class Indexer:
         """
         target = Path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
-        # TODO: Write a temporary sibling file, then atomically replace the
-        # target. Test that a failed save preserves the previous index.
-        with open(target, "wb") as f:
-            pickle.dump(self.bm25.index_data, f)
+        temporary_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="wb", dir=target.parent, prefix=f".{target.name}.",
+                delete=False,
+            ) as file:
+                temporary_path = Path(file.name)
+                pickle.dump(self.bm25.index_data, file)
+            os.replace(temporary_path, target)
+        finally:
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)

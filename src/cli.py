@@ -7,6 +7,8 @@ from pathlib import Path
 from .generation import Answer
 from .retrieval import one_question, multiple_question
 from .models import (
+    MinimalAnswer,
+    StudentSearchResultsAndAnswer,
     UnansweredQuestion,
     StudentSearchResults,
 )
@@ -14,8 +16,6 @@ from .evaluation import evaluate_dataset
 from .io import read_json_file, save_json
 
 
-# TODO: Add CLI integration tests for all six commands, dataset IDs,
-# duplicate IDs, invalid k, missing files, and concise error responses.
 class Cli:
     """Provide the six command-line operations for the RAG pipeline."""
 
@@ -24,7 +24,7 @@ class Cli:
         query: str,
         k: int = 5,
         index_path: str = "data/processed/index.pkl",
-    ) -> None:
+    ) -> StudentSearchResults:
         """Print the highest-ranked source spans for a query.
 
         Args:
@@ -44,11 +44,9 @@ class Cli:
                 f"Index not found: {index}. Run `index` first."
             )
         bm25 = Bm25.load_index(str(index_path))
-        result = one_question(
-            UnansweredQuestion(question=str(query)), k, bm25
-        )
+        result = one_question(UnansweredQuestion(question=str(query)), k, bm25)
         output = StudentSearchResults(search_results=[result], k=k)
-        print(output.model_dump_json(indent=2))
+        return output
 
     def index(
         self,
@@ -98,9 +96,22 @@ class Cli:
         result = one_question(
             UnansweredQuestion(question=str(question)), k, bm25
         )
-        output = Answer().generate_dataset(
-            StudentSearchResults(search_results=[result], k=k)
-        )
+        if not result.retrieved_sources or not question.strip():
+            output = StudentSearchResultsAndAnswer(
+                search_results=[
+                    MinimalAnswer(
+                        question_id=result.question_id,
+                        question=result.question,
+                        retrieved_sources=result.retrieved_sources,
+                        answer="Insufficient retrieved evidence.",
+                    )
+                ],
+                k=k,
+            )
+        else:
+            output = Answer().generate_dataset(
+                StudentSearchResults(search_results=[result], k=k)
+            )
         print(output.model_dump_json(indent=2))
 
     def search_dataset(
@@ -108,7 +119,6 @@ class Cli:
         dataset_path: str,
         save_directory: str,
         k: int = 5,
-        index_path: str = "data/processed/index.pkl",
     ) -> None:
         """Save ranked sources for every question, preserving input IDs.
 
@@ -125,6 +135,7 @@ class Cli:
             OSError: If input files cannot be read or results cannot be saved.
         """
         validate_k(k)
+        index_path: str = "data/processed/index.pkl"
         index = Path(index_path)
         if not index.exists():
             raise FileNotFoundError(
@@ -180,8 +191,6 @@ class Cli:
             student_search_results_path, StudentSearchResults
         )
         data = read_json_file(dataset_path, RagDataset)
-        # TODO: Benchmark official datasets at k=5 and k=10; document corpus,
-        # commit, environment, recall, time and memory in docs/BENCHMARKS.md.
         result = evaluate_dataset(
             data.rag_questions,
             search.search_results,

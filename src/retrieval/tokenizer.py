@@ -1,3 +1,5 @@
+"""Tokenize code and prose for indexing and retrieval."""
+
 import re
 from ..retrieval.stop_words import STOP_WORD
 
@@ -13,8 +15,6 @@ def tokenize(text: str) -> list[str]:
     Returns:
         Tokens in occurrence order, including repeated words.
     """
-    # TODO: Inspect measured retrieval misses before tuning token splitting;
-    # compare recall@5/@10 against a fixed, separately evaluated baseline.
     tokens = []
     for token in re.findall(PATTERN, text):
         tokens.append(token.lower())

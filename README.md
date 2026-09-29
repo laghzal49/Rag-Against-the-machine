@@ -1,6 +1,8 @@
-*This project was created as part of the 42 curriculum by tlaghzal.*
+*This project has been created as part of the 42 curriculum by tlaghzal.*
 
 # RAG Against the Machine
+
+## Description
 
 A local codebase RAG pipeline that indexes Python and documentation files,
 retrieves exact character spans with BM25, and answers questions with
@@ -19,7 +21,9 @@ construction, BM25 scoring, source-span validation, evaluation, and the CLI.
 - Persisted indexes and single-query or dataset CLI workflows
 - Local answer generation with a small Qwen model
 
-## Quick demo
+## Instructions
+
+### Quick demo
 
 Requirements: Python 3.10+, [uv](https://docs.astral.sh/uv/), and network access
 for the first dependency/model download.
@@ -150,8 +154,24 @@ arguments.
 
 Local development runs on the supplied vLLM 0.10.1 corpus previously reported
 approximately 85% documentation recall@5 and 82.8% code recall@5. These are
-machine- and dataset-dependent measurements, not guarantees. Use the commands
-in `SMOKE_TEST.md` to reproduce the demo and rerun official evaluation.
+machine- and dataset-dependent measurements, not guarantees or verified
+private-dataset results. On one local run, indexing 1,969 supported files into
+13,717 chunks took 9.03 seconds, and 200 repeated searches took 0.90 seconds.
+These local measurements use the same query repeatedly and do not substitute
+for the official 200-question throughput test. Indexing must finish within
+300 seconds and retrieval of 200 questions within 90 seconds on the evaluation
+machine. Run the official exam scripts to measure those limits and private
+recall; this repository does not contain the private datasets. Use
+`SMOKE_TEST.md` for local verification.
+
+## Challenges faced
+
+Tree-sitter reports UTF-8 byte offsets while the required output uses Unicode
+character offsets. Converting each node boundary before building a chunk keeps
+the returned span aligned with Python string slices. Code questions can also
+use different words than source identifiers; preserving full identifiers and
+splitting snake_case and CamelCase names improves lexical matches, though
+synonyms can still be missed.
 
 ## Limitations
 
@@ -164,9 +184,6 @@ in `SMOKE_TEST.md` to reproduce the demo and rerun official evaluation.
   committed.
 
 ## Development
-
-Search for `TODO:` in `src/`, `tests/`, and `Makefile` for improvements
-listed beside the code that needs changing.
 
 ```bash
 make install

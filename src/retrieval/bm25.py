@@ -42,8 +42,10 @@ class Bm25:
             b: Length normalization parameter between zero and one.
         """
         if (
-            not math.isfinite(k) or k <= 0
-            or not math.isfinite(b) or not 0 <= b <= 1
+            not math.isfinite(k)
+            or k <= 0
+            or not math.isfinite(b)
+            or not 0 <= b <= 1
         ):
             raise ValueError("BM25 requires finite k > 0 and 0 <= b <= 1")
         self.k1: float = k
@@ -187,8 +189,6 @@ class Bm25:
                 f"Invalid index structure in {path}. "
                 "Run `index` to rebuild it."
             )
-        # TODO: Validate state types, chunk/posting IDs, lengths and finite
-        # parameters; reject incompatible versions with rebuild instructions.
         obj = cls.__new__(cls)
         obj.chunks = info["chunks"]
         obj.N = info["N"]

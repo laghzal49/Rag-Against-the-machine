@@ -1,6 +1,3 @@
-# TODO: Add a test target and .github/workflows/ci.yml for locked installs,
-# unittest discovery, lint and types. Fix learn/ issues while keeping
-# intentionally unfinished exercise tests separate from application tests.
 .PHONY: install run debug clean lint
 ARGS ?= --help
 install:
@@ -10,7 +7,7 @@ run:
 debug:
 	uv run python -m pdb -m src $(ARGS)
 clean:
-	find src $(wildcard tests) -type d -name __pycache__ -prune -exec rm -rf {} +
+	find src -type d -name __pycache__ -prune -exec rm -rf {} +
 	rm -rf .mypy_cache .pytest_cache
 lint:
 	uv run flake8 .

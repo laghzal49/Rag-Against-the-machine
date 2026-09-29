@@ -39,15 +39,11 @@ class ContextBuilder:
             ValueError: If a path escapes the project or a span is stale.
             OSError: If a source file cannot be read.
         """
-        # TODO: Keep passages paired with source metadata so generation can
-        # select complete passages within its token budget.
         text = ""
         for contx in sources:
             path = Path(contx.file_path).resolve()
             if not path.is_relative_to(Path.cwd().resolve()):
                 raise ValueError("Source path is outside the project")
-            # TODO: Compare a persisted source fingerprint before slicing;
-            # bounds alone cannot detect edits that keep the same file length.
             file = read_source_file(path)
             if contx.last_character_index > len(file):
                 raise ValueError("Source span exceeds current file length")

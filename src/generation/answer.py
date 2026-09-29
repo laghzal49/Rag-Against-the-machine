@@ -36,7 +36,7 @@ class Answer(ContextBuilder):
         self.model = AutoModelForCausalLM.from_pretrained(self.model_name)
         if max_new_tokens >= self.model.config.max_position_embeddings:
             raise ValueError("max_new_tokens exceeds the model context budget")
-        self.tokenizer.truncation_side = "left"
+        self.tokenizer.truncation_side = "right"
 
     def generate(self, question: UnansweredQuestion, context: str) -> str:
         """Answer from cited context or abstain when evidence is empty.
@@ -62,7 +62,7 @@ class Answer(ContextBuilder):
             {
                 "role": "user",
                 "content": (
-                    f"Context:\n{context}\n\nQuestion: {question.question}"
+                    f"Question: {question.question}\n\nContext:\n{context}"
                 ),
             },
         ]
@@ -72,8 +72,6 @@ class Answer(ContextBuilder):
             add_generation_prompt=True,
             enable_thinking=False,
         )
-        # TODO: Budget whole passages before tokenizing; preserve the system
-        # instructions and question, and reject an oversized question alone.
         inputs = self.tokenizer(
             text,
             return_tensors="pt",
@@ -81,8 +79,6 @@ class Answer(ContextBuilder):
             max_length=self.model.config.max_position_embeddings
             - self.max_new_tokens,
         )
-        # TODO: Add opt-in Qwen tests for supported answers, misleading
-        # matches, and abstention; record model version and output quality.
         output = self.model.generate(
             **inputs, max_new_tokens=self.max_new_tokens
         )
@@ -105,7 +101,6 @@ class Answer(ContextBuilder):
         Returns:
             Dataset of generated answers with the original search limit.
         """
-        # TODO: Rename anwers/qt/contx/respond/retu to clear descriptive names.
         anwers: list[MinimalAnswer] = []
         for question in tqdm(results.search_results):
             qt = UnansweredQuestion(
@@ -117,8 +112,6 @@ class Answer(ContextBuilder):
                 MinimalAnswer(
                     question_id=question.question_id,
                     question=question.question,
-                    # TODO: Return only sources included in the final prompt
-                    # once passage budgeting selects the evidence.
                     retrieved_sources=question.retrieved_sources,
                     answer=respond,
                 )

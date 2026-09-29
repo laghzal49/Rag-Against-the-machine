@@ -5,8 +5,6 @@ from ..models import UnansweredQuestion
 from ..retrieval.bm25 import validate_k
 
 
-# TODO: Rename misspelled public functions/arguments with compatibility
-# aliases where needed; preserve the current IoU threshold and recall metric.
 def calcultion(first: MinimalSource, second: MinimalSource) -> float:
     """Return character intersection over union for same-path spans.
 
