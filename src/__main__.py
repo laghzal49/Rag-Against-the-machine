@@ -3,8 +3,14 @@
 import sys
 
 import fire
-
-from .cli import Cli
+from .commands import (
+    answer,
+    answer_dataset,
+    index,
+    search,
+    evaluate,
+    search_dataset,
+)
 
 
 def main() -> int:
@@ -13,16 +19,15 @@ def main() -> int:
     Returns:
         Zero on success, one on failure, or 130 on interruption.
     """
-    cli = Cli()
     try:
         fire.Fire(
             {
-                "search": cli.search,
-                "index": cli.index,
-                "answer": cli.answer,
-                "search_dataset": cli.search_dataset,
-                "answer_dataset": cli.answer_dataset,
-                "evaluate": cli.evaluate,
+                "search": search,
+                "index": index,
+                "answer": answer,
+                "search_dataset": search_dataset,
+                "answer_dataset": answer_dataset,
+                "evaluate": evaluate,
             }
         )
     except KeyboardInterrupt:

@@ -1,15 +1,14 @@
 """Public chunking interfaces."""
 
-from .splitters import (
-    DEFAULT_MAX_CHUNK_SIZE, MAX_CHUNK_SIZE, chunk_python_file, chunk_text,
-    give_byte_to_len, _validate_options,
-)
+from .utils import DEFAULT_MAX_CHUNK_SIZE, MAX_CHUNK_SIZE, validate_options
+from .file_chunk import chunk_text
+from .python_chunk import chunk_python_file
+
 
 __all__ = [
     "DEFAULT_MAX_CHUNK_SIZE",
     "MAX_CHUNK_SIZE",
     "chunk_python_file",
     "chunk_text",
-    "give_byte_to_len",
-    "_validate_options",
+    "validate_options",
 ]

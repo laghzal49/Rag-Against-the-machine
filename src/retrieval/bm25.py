@@ -8,7 +8,7 @@ from typing import Any
 from tqdm import tqdm
 
 from ..models import Chunk, MinimalSource
-from ..retrieval.tokenizer import tokenize
+from ..tokenizer import tokenize
 
 
 def validate_k(k: int) -> None:

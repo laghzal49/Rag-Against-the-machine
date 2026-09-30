@@ -1,7 +1,7 @@
 """Tokenize code and prose for indexing and retrieval."""
 
 import re
-from ..retrieval.stop_words import STOP_WORD
+from .stop_words import STOP_WORD
 
 PATTERN = r"\b\w+\b"
 

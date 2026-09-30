@@ -11,8 +11,9 @@ from ..chunking import chunk_python_file, chunk_text, DEFAULT_MAX_CHUNK_SIZE
 from ..retrieval.bm25 import Bm25
 from ..models import Chunk
 from ..io import read_source_file
-from ..chunking import _validate_options
-from ..retrieval.tokenizer import tokenize
+from ..chunking import validate_options
+from .file_index import find_files
+from ..tokenizer import tokenize
 
 
 class Indexer:
@@ -36,16 +37,16 @@ class Indexer:
         Raises:
             ValueError: If the path, chunk size, or BM25 settings are invalid.
         """
-        _validate_options(max_size_chunks)
+        validate_options(max_size_chunks)
         self.path: str = path
-        self.paths: list[Path] = self.find_files(path)
+        self.paths: list[Path] = find_files(path)
         self.max_size: int = max_size_chunks
         self.chunks: list[Chunk] = self.chunk_all_files()
         self.N = len(self.chunks)
         self.corpus = {
             doc_id: tokenize(doc.text) + tokenize(doc.file_path)
             for doc_id, doc in tqdm(
-                enumerate(self.chunks), desc="Tokenizing chunks", unit="chunk"
+                enumerate(self.chunks), desc="Tokenizing chunks"
             )
         }
         self.doc_len = {
@@ -62,64 +63,6 @@ class Indexer:
             b=b,
         )
 
-    def dfs_file(self, path: Path) -> list[Path]:
-        """Walk files deterministically, skipping symbolic links.
-
-        Args:
-            path: File or directory at which traversal begins.
-
-        Returns:
-            Supported source file paths in deterministic traversal order.
-        """
-        data: list[Path] = []
-        if path.is_dir():
-            for child in sorted(path.iterdir()):
-                if child.is_symlink():
-                    continue
-                if child.is_dir():
-                    data.extend(self.dfs_file(child))
-                else:
-                    if self.is_useful_file(child):
-                        data.append(child)
-        else:
-            if self.is_useful_file(path):
-                data.append(path)
-
-        return data
-
-    def is_useful_file(self, path: Path) -> bool:
-        """Return whether the file has a supported text extension.
-
-        Args:
-            path: Candidate source file path.
-
-        Returns:
-            True for Python, Markdown, and plain-text extensions.
-        """
-        useful = [".py", ".txt", ".md"]
-        return path.suffix in useful
-
-    def find_files(self, directory: str) -> list[Path]:
-        """Collect supported files or reject a nonexistent input path.
-
-        Args:
-            directory: Source directory or individual file.
-
-        Returns:
-            Supported source file paths.
-
-        Raises:
-            ValueError: If the input path does not exist.
-        """
-        path = Path(directory).resolve()
-        try:
-            path = path.relative_to(Path.cwd().resolve())
-        except ValueError as error:
-            raise ValueError("Corpus must be inside the project") from error
-        if not path.exists():
-            raise ValueError(f"Corpus path does not exist: {directory}")
-        return self.dfs_file(path)
-
     def chunk_all_files(self) -> list[Chunk]:
         """Chunk exact UTF-8 text, reporting unreadable files as skipped.
 
@@ -127,7 +70,7 @@ class Indexer:
             Chunks with offsets into unmodified source text.
         """
         chunks: list[Chunk] = []
-        for path in tqdm(self.paths, desc="Chunking the Files:"):
+        for path in tqdm(self.paths, desc="Chunking the Files"):
             try:
                 text = read_source_file(path)
             except (UnicodeError, OSError) as error:
@@ -165,7 +108,9 @@ class Indexer:
         temporary_path: Path | None = None
         try:
             with tempfile.NamedTemporaryFile(
-                mode="wb", dir=target.parent, prefix=f".{target.name}.",
+                mode="wb",
+                dir=target.parent,
+                prefix=f".{target.name}.",
                 delete=False,
             ) as file:
                 temporary_path = Path(file.name)
