@@ -2,6 +2,7 @@ from ..modele import RagDataset
 from ..retrieval import multiple_question, validate_k, Bm25
 from ..io import save_json, read_json_file
 from pathlib import Path
+from .index import INDEX_PATH
 
 
 def search_dataset(
@@ -15,7 +16,6 @@ def search_dataset(
         dataset_path: Input question dataset JSON file.
         save_directory: Output directory; keeps the input basename.
         k: Maximum sources per question.
-        index_path: Path to a trusted local BM25 index.
 
     Raises:
         FileNotFoundError: If an input file does not exist.
@@ -24,13 +24,12 @@ def search_dataset(
         OSError: If input files cannot be read or results cannot be saved.
     """
     validate_k(k)
-    index_path: str = "data/processed/index.pkl"
-    index = Path(index_path)
+    index = Path(INDEX_PATH)
     if not index.exists():
         raise FileNotFoundError(
             f"Index not found: {index}. Run `index` first."
         )
-    bm25 = Bm25.load_index(str(index_path))
+    bm25 = Bm25.load_index(str(INDEX_PATH))
     data = read_json_file(dataset_path, RagDataset)
     ids = [question.question_id for question in data.rag_questions]
     if len(ids) != len(set(ids)):

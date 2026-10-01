@@ -4,205 +4,169 @@
 
 ## Description
 
-A local codebase RAG pipeline that indexes Python and documentation files,
-retrieves exact character spans with BM25, and answers questions with
-`Qwen/Qwen3-0.6B` using the retrieved evidence.
-
-Unlike a framework-only RAG demo, the core retrieval pipeline is implemented in
-this repository: syntax-aware chunking, tokenization, inverted-index
-construction, BM25 scoring, source-span validation, evaluation, and the CLI.
-
-## What it demonstrates
-
-- Tree-sitter chunking for Python and overlapping windows for Markdown/text
-- UTF-8 byte-to-character offset conversion for exact `text[start:end]` spans
-- BM25 with an inverted index, stop-word filtering, and identifier splitting
-- Pydantic contracts for questions, sources, retrieval results, and answers
-- Persisted indexes and single-query or dataset CLI workflows
-- Local answer generation with a small Qwen model
+This project answers questions about the supplied vLLM 0.10.1 codebase. It reads
+Python, Markdown, and text files, stores searchable source chunks, retrieves
+ranked passages with BM25, and gives those passages to a local
+`Qwen/Qwen3-0.6B` model. Retrieval results and answers use the JSON structures
+specified in the subject. The default index covers `data/raw/` and is saved at
+`data/processed/index.pkl`.
 
 ## Instructions
 
-### Quick demo
-
-Requirements: Python 3.10+, [uv](https://docs.astral.sh/uv/), and network access
-for the first dependency/model download.
-
-```bash
-git clone https://github.com/laghzal49/rag-v2.git
-cd rag-v2
-uv sync --locked
-
-uv run python -m src index \
-  --data_path demo/corpus \
-  --index_path demo/index.pkl
-
-uv run python -m src search \
-  "When is an expired cache entry removed?" \
-  --index_path demo/index.pkl \
-  --k 3
-```
-
-The first result should reference `demo/corpus/cache.py`. Inspect the returned
-half-open offsets against `file_text[start:end]` to verify that the evidence is
-an exact slice of the indexed source.
-
-Generate a grounded answer with the same index:
+Use Python 3.10 or later and [uv](https://docs.astral.sh/uv/). The first `uv sync`
+may download dependencies; the first answer may download the Qwen model. Place
+the supplied vLLM tree at `data/raw/vllm-0.10.1/` and the public question JSON
+files under `data/datasets/{UnansweredQuestions,AnsweredQuestions}/`. The raw
+corpus, datasets, generated index, search results, and model weights are not part
+of the Git submission.
 
 ```bash
-uv run python -m src answer \
-  "When is an expired cache entry removed?" \
-  --index_path demo/index.pkl \
-  --k 3
-```
-
-The answer command loads `Qwen/Qwen3-0.6B`; the first run downloads the model
-unless it is already cached. Retrieval itself does not require the model.
-
-## Pipeline
-
-```text
-.py / .md / .txt
-       |
-       v
-syntax-aware chunking
-       |
-       v
-BM25 inverted index ----> index.pkl
-       |
-       v
-ranked source spans
-       |
-       v
-bounded source context
-       |
-       v
-Qwen3-0.6B answer
-```
-
-## Key engineering decisions
-
-### Syntax-aware, bounded chunks
-
-Python files are parsed with Tree-sitter so chunks follow top-level syntax
-boundaries where possible. Oversized nodes and prose files fall back to
-overlapping windows. Every chunk is bounded by `max_chunk_size <= 2000`.
-
-Tree-sitter returns byte offsets while Python slices use Unicode character
-offsets. The chunker converts between them so every retrieved span can be
-verified directly against the original UTF-8 text.
-
-### Code-aware BM25
-
-The tokenizer lowercases terms, removes common English stop words, and expands
-snake_case and CamelCase identifiers while retaining the full identifier.
-An inverted index limits scoring to chunks containing query terms.
-
-The default BM25 parameters are `k1=1.5` and `b=0.5`.
-
-### Explicit data contracts
-
-Pydantic models validate source spans, questions, retrieval results, and
-generated answers between pipeline stages. Saved search results can be evaluated
-independently from answer generation.
-
-## Main commands
-
-```bash
-# Index the official corpus (default data path and index path)
+uv sync
 uv run python -m src index --max_chunk_size 2000
+uv run python -m src search "How to configure OpenAI server?" --k 5
+uv run python -m src answer "How to configure OpenAI server?" --k 5
+```
 
-# Search one question
-uv run python -m src search "What is PagedAttention?" --k 5
+Run a public dataset from indexing through local recall measurement:
 
-# Answer one question
-uv run python -m src answer "What is PagedAttention?" --k 5
-
-# Search a dataset
+```bash
 uv run python -m src search_dataset \
   --dataset_path data/datasets/UnansweredQuestions/dataset_docs_public.json \
   --save_directory data/output/search_results/UnansweredQuestions \
-  --k 10
+  --k 5
 
-# Evaluate saved retrieval results
 uv run python -m src evaluate \
   --student_search_results_path data/output/search_results/UnansweredQuestions/dataset_docs_public.json \
   --dataset_path data/datasets/AnsweredQuestions/dataset_docs_public.json \
-  --k 10
+  --k 5
+
+uv run python -m src answer_dataset \
+  --student_search_results_path data/output/search_results/UnansweredQuestions/dataset_docs_public.json \
+  --save_directory data/output/search_results_and_answer/UnansweredQuestions
 ```
 
-Run `uv run python -m src --help` or append `--help` to a command for its
-arguments.
+Replace `docs` with `code` in the dataset filenames to measure code retrieval.
+Use separate output directories for datasets that share a filename. The answer
+dataset command runs the local model for every result and may take much longer
+than retrieval. `search` and `answer` print JSON to standard output; the dataset
+commands write a JSON file named after their input file. All commands run as
+`uv run python -m src <command>`. Index and search commands accept an optional
+`--index_path`; `index` also accepts `--data_path`. Dataset input and output paths
+are supplied as CLI arguments.
 
-## Project structure
+The Makefile provides `install`, `run`, `debug`, `clean`, and `lint`. For example,
+`make lint` runs flake8 and mypy with the subject's required flags. The generated
+index uses pickle and should only be loaded from a trusted local build.
 
-| Path | Responsibility |
-| --- | --- |
-| `src/chunking/splitters.py` | Python AST and text-window chunking |
-| `src/retrieval/bm25.py` | Tokenization, postings, ranking, persistence |
-| `src/indexing/indexer.py` | Corpus discovery and index construction |
-| `src/retrieval/search.py` | Single and batch retrieval |
-| `src/generation/` | Validated source context and local generation |
-| `src/io/` | Exact source reads and dataset JSON input/output |
-| `src/evaluation/metrics.py` | Character-span recall evaluation |
-| `src/models/schemas.py` | Pydantic data contracts |
-| `src/cli.py` | Fire command-line interface |
-| `demo/corpus/` | Small reproducible corpus |
-| `SMOKE_TEST.md` | Final verification checklist |
+## System architecture
 
-## Validation
-
-Local development runs on the supplied vLLM 0.10.1 corpus previously reported
-approximately 85% documentation recall@5 and 82.8% code recall@5. These are
-machine- and dataset-dependent measurements, not guarantees or verified
-private-dataset results. On one local run, indexing 1,969 supported files into
-13,717 chunks took 9.03 seconds, and 200 repeated searches took 0.90 seconds.
-These local measurements use the same query repeatedly and do not substitute
-for the official 200-question throughput test. Indexing must finish within
-300 seconds and retrieval of 200 questions within 90 seconds on the evaluation
-machine. Run the official exam scripts to measure those limits and private
-recall; this repository does not contain the private datasets. Use
-`SMOKE_TEST.md` for local verification.
-
-## Challenges faced
-
-Tree-sitter reports UTF-8 byte offsets while the required output uses Unicode
-character offsets. Converting each node boundary before building a chunk keeps
-the returned span aligned with Python string slices. Code questions can also
-use different words than source identifiers; preserving full identifiers and
-splitting snake_case and CamelCase names improves lexical matches, though
-synonyms can still be missed.
-
-## Limitations
-
-- Retrieval is lexical: synonyms absent from the corpus/query can be missed.
-- The small generator can still produce incorrect wording; retrieved spans are
-  preserved so answers can be inspected.
-- Pickle indexes must only be loaded from trusted sources and rebuilt after
-  corpus changes.
-- The official 42 corpus, datasets, model weights, and generated outputs are not
-  committed.
-
-## Development
-
-```bash
-make install
-make lint
-make clean
+```text
+data/raw/ Python, Markdown, text
+             |
+             v
+   file discovery and chunking
+             |
+             v
+   tokenization and BM25 index ----> data/processed/index.pkl
+             |
+      single or dataset search
+             |
+             v
+   ranked source file paths and character spans
+             |
+       source text loading
+             |
+             v
+   Qwen/Qwen3-0.6B generation ----> answer JSON
 ```
 
-See `SMOKE_TEST.md` for the release checklist.
+`src/indexing/` discovers files and builds the index. `src/chunking/` splits
+them, `src/tokenizer/` prepares terms, and `src/retrieval/` ranks chunks.
+`src/generation/` reads the returned source spans and generates answers.
+`src/models/` contains the Pydantic contracts for questions, sources, search
+results, and answers. `src/commands/` exposes the six Python Fire commands;
+`src/evaluation/` implements a local recall calculation.
 
-## Resources
+## Chunking strategy
 
-- [vLLM](https://github.com/vllm-project/vllm)
-- [Tree-sitter](https://tree-sitter.github.io/tree-sitter/)
-- [Okapi BM25](https://nlp.stanford.edu/IR-book/html/htmledition/okapi-bm25-a-non-binary-model-1.html)
-- [Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B)
-- [Pydantic](https://docs.pydantic.dev/)
+Python files use Tree-sitter top-level syntax nodes. Adjacent nodes are grouped
+until the configured limit; a node larger than the limit is split into windows.
+Markdown and plain text use character windows with up to 200 characters of
+overlap. The default maximum is 2,000 characters, and validation rejects larger
+values. Source offsets are half-open Unicode character positions, so
+`file_text[first_character_index:last_character_index]` reproduces a chunk.
+Tree-sitter's byte offsets are converted before storing them. Source paths retain
+the `data/raw/...` prefix expected by the evaluator.
 
-## AI use
+## Retrieval method and design decisions
+
+The tokenizer lowercases text, filters common English stop words, and keeps
+identifiers both whole and split at underscores or CamelCase boundaries. It
+indexes passage text together with its source path. An inverted index finds
+candidate chunks; BM25 scores term matches using frequency, inverse document
+frequency, and document length normalization (`k1=1.5`, `b=0.5`). Results are
+sorted by descending score and limited to `k` source spans.
+
+Keeping exact paths and character ranges lets the evaluator check overlap and
+lets generation read the original text. Lexical retrieval is fast and
+inspectable, but a paraphrase with no shared terms may miss a relevant passage.
+Overlapping prose windows help avoid losing context at a boundary, while smaller
+windows increase the number of candidate chunks. The local generator defaults
+to `Qwen/Qwen3-0.6B`; its code also accepts a model name when constructed in
+Python, while the CLI uses the default.
+
+## Performance analysis
+
+The following measurements used the supplied vLLM 0.10.1 corpus and public
+question datasets on this machine. Each row used a freshly built index, `k=5`,
+and the supplied evaluator with `--max_context_length 2000`. The public docs
+set has 100 questions; the public code set has 99.
+
+| Maximum chunk size | Index time | Docs recall@5 | Code recall@5 |
+| ---: | ---: | ---: | ---: |
+| 2,000 characters | 7.56 s | 85.0% | 82.8% |
+| 1,000 characters | 10.35 s | 84.0% | 71.7% |
+
+At 2,000 characters the index contained 13,717 chunks from 1,969 files. The
+two dataset search commands took about 2.3 and 2.2 seconds respectively,
+including separate process startup and index loading. These local measurements
+are below the subject's 300-second indexing and 90-second retrieval limits.
+Smaller chunks reduced public recall, especially for code, and roughly doubled
+the number of indexed chunks. The correction sheet grades private datasets,
+so these public scores do not establish private recall or answer quality. Its
+thresholds are docs recall@5 of at least 80% and code recall@5 of at least 50%.
+
+To reproduce the public scores, build an index with the chosen chunk size, run
+`search_dataset` for both public unanswered datasets with `--k 5`, then run
+`evaluate` against the corresponding answered datasets. The evaluator used for
+the table was the separate supplied `moulinette` executable; the implementation
+does not import or call it. The local `evaluate` command reports the same
+recall@5 values for these public results.
+
+## Challenges faced and limitations
+
+Tree-sitter identifies syntax locations in UTF-8 bytes, while the required
+output uses character indices. Converting each node boundary before storing a
+span keeps the returned source slice exact. The code and documentation datasets
+also use different vocabulary; indexing full identifiers and their component
+words helps match both. Lexical retrieval still depends on term overlap.
+
+The answer model can produce incomplete wording despite relevant evidence.
+Its prompt is tokenized with a maximum input length; long context can be
+truncated, so lower-ranked sources may not reach the model. Verify grounding
+against the returned source spans. Empty queries and zero-result requests
+return empty sources or an insufficient-evidence answer; bad paths and malformed
+JSON are reported as errors without an unhandled traceback.
+
+## Resources and AI use
+
+- [42 project subject](https://projects.intra.42.fr/projects/rag-against-the-machine)
+- [vLLM repository](https://github.com/vllm-project/vllm)
+- [Tree-sitter documentation](https://tree-sitter.github.io/tree-sitter/)
+- [BM25 explanation](https://nlp.stanford.edu/IR-book/html/htmledition/okapi-bm25-a-non-binary-model-1.html)
+- [Qwen3-0.6B model card](https://huggingface.co/Qwen/Qwen3-0.6B)
+- [Pydantic documentation](https://docs.pydantic.dev/)
 
 AI assisted with documentation, type annotations, edge-case review, and style
-checks. The retrieval design and implementation remain inspectable in the
-repository.
+checks. The implementation and reported measurements remain available for
+inspection and independent verification.

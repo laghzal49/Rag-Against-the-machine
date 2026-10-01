@@ -7,7 +7,8 @@ from ..retrieval import Bm25, one_question, validate_k
 def search(
     query: str,
     k: int = 5,
-) -> StudentSearchResults:
+    index_path: str = "data/processed/index.pkl",
+) -> None:
     """Print the highest-ranked source spans for a query.
 
     Args:
@@ -21,7 +22,6 @@ def search(
             cannot be restored.
     """
     validate_k(k)
-    index_path: str = "data/processed/index.pkl"
     index = Path(index_path)
     if not index.exists():
         raise FileNotFoundError(
@@ -30,4 +30,4 @@ def search(
     bm25 = Bm25.load_index(str(index_path))
     result = one_question(UnansweredQuestion(question=str(query)), k, bm25)
     output = StudentSearchResults(search_results=[result], k=k)
-    return output
+    print(output.model_dump_json(indent=2))

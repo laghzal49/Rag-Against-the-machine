@@ -7,12 +7,12 @@ from ..modele import (
 from ..retrieval import one_question, validate_k, Bm25
 from ..generation import Answer
 from pathlib import Path
+from .index import INDEX_PATH
 
 
 def answer(
     question: str,
     k: int = 5,
-    index_path: str = "data/processed/index.pkl",
 ) -> None:
     """Retrieve evidence and print a locally generated answer.
 
@@ -26,12 +26,12 @@ def answer(
         ValueError: If k, source spans, or token budget are invalid.
     """
     validate_k(k)
-    index = Path(index_path)
+    index = Path(INDEX_PATH)
     if not index.exists():
         raise FileNotFoundError(
             f"Index not found: {index}. Run `index` first."
         )
-    bm25 = Bm25.load_index(str(index_path))
+    bm25 = Bm25.load_index(str(INDEX_PATH))
     result = one_question(UnansweredQuestion(question=str(question)), k, bm25)
     if not result.retrieved_sources or not question.strip():
         output = StudentSearchResultsAndAnswer(

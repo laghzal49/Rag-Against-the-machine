@@ -1,11 +1,8 @@
 .venv/
-data/
-vllm*/
 __pycache__/
 *.py[cod]
 .mypy_cache/
 .pytest_cache/
-demo/index.pkl
 evaluations/
 exams/
 *.zip
