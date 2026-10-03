@@ -1,122 +1,154 @@
-"""Generate grounded answers with a local language model."""
+"""Generate answers from retrieved code with a local text pipeline."""
 
 from tqdm import tqdm
+
 from ..models import (
-    UnansweredQuestion,
+    MinimalAnswer,
     StudentSearchResults,
     StudentSearchResultsAndAnswer,
-    MinimalAnswer,
+    UnansweredQuestion,
 )
 from .context import ContextBuilder
 
+NO_EVIDENCE = "Insufficient retrieved evidence."
+SYSTEM_PROMPT = (
+    "Answer concisely using only the provided context. "
+    "If evidence is insufficient, state so."
+)
+
 
 class Answer(ContextBuilder):
-    """Generate grounded answers from retrieved source passages."""
+    """Answer questions with Qwen and a bounded context window."""
 
     def __init__(
-        self, model_name: str = "Qwen/Qwen3-0.6B", max_new_tokens: int = 150
+        self,
+        model_name: str = "Qwen/Qwen3-0.6B",
+        max_new_tokens: int = 150,
+        max_input_tokens: int = 2048,
     ) -> None:
-        """Initialize the text generation pipeline.
+        """Load the local text-generation pipeline and set token limits.
 
         Args:
             model_name: Hugging Face model ID or local model directory.
-            max_new_tokens: Maximum number of tokens to generate.
-        """
-        from transformers import AutoModelForCausalLM, AutoTokenizer
+            max_new_tokens: Maximum number of tokens in each answer.
+            max_input_tokens: Maximum number of tokens in the prompt.
 
-        if (
-            isinstance(max_new_tokens, bool)
-            or not isinstance(max_new_tokens, int)
-            or max_new_tokens <= 0
+        Raises:
+            ValueError: If a token limit is invalid, the model has no
+                tokenizer, or no room remains for the prompt.
+        """
+        from transformers import pipeline
+
+        for name, value in (
+            ("max_new_tokens", max_new_tokens),
+            ("max_input_tokens", max_input_tokens),
         ):
-            raise ValueError("max_new_tokens must be a positive integer")
-        self.model_name = model_name
-        self.max_new_tokens = max_new_tokens
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-        self.model = AutoModelForCausalLM.from_pretrained(self.model_name)
-        if max_new_tokens >= self.model.config.max_position_embeddings:
-            raise ValueError("max_new_tokens exceeds the model context budget")
+            if (isinstance(value, bool) or not isinstance(value, int)
+                    or value < 1):
+                raise ValueError(f"{name} must be a positive integer")
+
+        self.generator = pipeline("text-generation", model=model_name)
+        tokenizer = self.generator.tokenizer
+        if tokenizer is None:
+            raise ValueError("The model has no tokenizer")
+        self.tokenizer = tokenizer
         self.tokenizer.truncation_side = "right"
+        self.max_new_tokens = max_new_tokens
+        available = (
+            self.generator.model.config.max_position_embeddings
+            - max_new_tokens
+        )
+        if available < 1:
+            raise ValueError("No model context remains for the prompt")
+        self.max_input_tokens = min(max_input_tokens, available)
 
     def generate(self, question: UnansweredQuestion, context: str) -> str:
-        """Answer from cited context or abstain when evidence is empty.
+        """Answer from the leading context within the model token limit.
 
         Args:
-            question: Input question, including its preserved identifier.
-            context: Numbered evidence passages to supply to the model.
+            question: Question and identifier to answer.
+            context: Retrieved source passages, ordered by relevance.
 
         Returns:
-            Generated answer text, or an insufficient-evidence message.
+            Generated answer, or an insufficient-evidence message if the
+            question or usable context is empty.
+
+        Raises:
+            ValueError: If the pipeline does not return answer text.
         """
-        if not context.strip() or not question.question.strip():
-            return "Insufficient retrieved evidence."
+        if not question.question.strip() or not context.strip():
+            return NO_EVIDENCE
 
         messages = [
-            {
-                "role": "system",
-                "content": (
-                    "Answer concisely using only the provided context. "
-                    "If evidence is insufficient, state so."
-                ),
-            },
+            {"role": "system", "content": SYSTEM_PROMPT},
             {
                 "role": "user",
-                "content": (
-                    f"Question: {question.question}\n\nContext:\n{context}"
-                ),
+                "content": f"Question: {question.question}\n\nContext:\n",
             },
         ]
-        text = self.tokenizer.apply_chat_template(
+        overhead = len(
+            self.tokenizer.apply_chat_template(
+                messages,
+                tokenize=True,
+                add_generation_prompt=True,
+                enable_thinking=False,
+            )
+        )
+        context_budget = self.max_input_tokens - overhead - 32
+        if context_budget < 1:
+            return NO_EVIDENCE
+
+        context_tokens = self.tokenizer.encode(
+            context, add_special_tokens=False
+        )
+        if len(context_tokens) > context_budget:
+            context = self.tokenizer.decode(
+                context_tokens[:context_budget], skip_special_tokens=True
+            )
+        if not context.strip():
+            return NO_EVIDENCE
+
+        messages[1]["content"] += context
+        output = self.generator(
             messages,
-            tokenize=False,
-            add_generation_prompt=True,
-            enable_thinking=False,
+            tokenizer_encode_kwargs={
+                "truncation": True,
+                "max_length": self.max_input_tokens,
+                "enable_thinking": False,
+            },
+            max_new_tokens=self.max_new_tokens,
+            return_full_text=False,
         )
-        inputs = self.tokenizer(
-            text,
-            return_tensors="pt",
-            truncation=True,
-            max_length=self.model.config.max_position_embeddings
-            - self.max_new_tokens,
-        )
-        output = self.model.generate(
-            **inputs, max_new_tokens=self.max_new_tokens
-        )
-        inputs_len = inputs["input_ids"].shape[1]
-        generated = output[0][inputs_len:]
-        dec: str = self.tokenizer.decode(
-            generated,
-            skip_special_tokens=True,
-        )
-        return dec
+        answer = output[0]["generated_text"]
+        if not isinstance(answer, str):
+            raise ValueError("The pipeline returned an invalid answer")
+        return answer.strip() or NO_EVIDENCE
 
     def generate_dataset(
         self, results: StudentSearchResults
     ) -> StudentSearchResultsAndAnswer:
-        """Answer each search result while preserving IDs and sources.
+        """Answer each retrieved question while preserving its metadata.
 
         Args:
-            results: Previously retrieved questions and ranked sources.
+            results: Ranked sources and questions to answer.
 
         Returns:
-            Dataset of generated answers with the original search limit.
+            Answers with the original question IDs, sources, and k value.
         """
-        anwers: list[MinimalAnswer] = []
-        for question in tqdm(results.search_results):
-            qt = UnansweredQuestion(
-                question_id=question.question_id, question=question.question
+        answers: list[MinimalAnswer] = []
+        for item in tqdm(results.search_results):
+            question = UnansweredQuestion(
+                question_id=item.question_id, question=item.question
             )
-            contx = self.context_from_sources(question.retrieved_sources)
-            respond = self.generate(qt, contx)
-            anwers.append(
+            context = self.context_from_sources(item.retrieved_sources)
+            answers.append(
                 MinimalAnswer(
-                    question_id=question.question_id,
-                    question=question.question,
-                    retrieved_sources=question.retrieved_sources,
-                    answer=respond,
+                    question_id=item.question_id,
+                    question=item.question,
+                    retrieved_sources=item.retrieved_sources,
+                    answer=self.generate(question, context),
                 )
             )
-        retu = StudentSearchResultsAndAnswer(
-            search_results=anwers, k=results.k
+        return StudentSearchResultsAndAnswer(
+            search_results=answers, k=results.k
         )
-        return retu

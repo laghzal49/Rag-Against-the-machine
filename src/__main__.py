@@ -2,7 +2,7 @@
 
 import sys
 import argparse
-import fire
+from fire import Fire
 from .commands import (
     answer,
     answer_dataset,
@@ -20,6 +20,13 @@ def main() -> int:
         Zero on success, one on failure, or 130 on interruption.
     """
     try:
+        if len(sys.argv) == 1 or sys.argv[1] in ("-h", "--help"):
+            print(
+                "Usage: python -m src "
+                "{index,search,search_dataset,answer,answer_dataset,evaluate} "
+                "[options]"
+            )
+            return 0
         parser = argparse.ArgumentParser(add_help=False)
         parser.add_argument(
             "command",
@@ -43,14 +50,19 @@ def main() -> int:
             "evaluate": evaluate,
         }
         selected = commands[args.command]
-        fire.Fire(
+        Fire(
             selected,
             command=remaining,
         )
     except KeyboardInterrupt:
         print("Interrupted.", file=sys.stderr)
         return 130
+    except SystemExit as error:
+        return error.code if isinstance(error.code, int) else 1
     except (OSError, ValueError, TypeError, RuntimeError) as error:
+        print(f"Error: {error}", file=sys.stderr)
+        return 1
+    except BaseException as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
     return 0

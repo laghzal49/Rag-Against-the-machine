@@ -1,8 +1,6 @@
 """Discover source files, chunk their exact text, and build a BM25 index."""
 
-import os
 import pickle
-import tempfile
 from pathlib import Path
 
 from tqdm import tqdm
@@ -95,7 +93,7 @@ class Indexer:
         return chunks
 
     def save(self, path: str) -> None:
-        """Save an index atomically, creating its parent directory.
+        """Save an index, creating its parent directory.
 
         Args:
             path: Destination index file.
@@ -105,17 +103,5 @@ class Indexer:
         """
         target = Path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
-        temporary_path: Path | None = None
-        try:
-            with tempfile.NamedTemporaryFile(
-                mode="wb",
-                dir=target.parent,
-                prefix=f".{target.name}.",
-                delete=False,
-            ) as file:
-                temporary_path = Path(file.name)
-                pickle.dump(self.bm25.index_data, file)
-            os.replace(temporary_path, target)
-        finally:
-            if temporary_path is not None:
-                temporary_path.unlink(missing_ok=True)
+        with target.open("wb+") as file:
+            pickle.dump(self.bm25.index_data, file)

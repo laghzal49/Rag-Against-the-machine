@@ -12,7 +12,14 @@ from ..tokenizer import tokenize
 
 
 def validate_k(k: int) -> None:
-    """Reject result limits that are not nonnegative integers."""
+    """Reject result limits that are not nonnegative integers.
+
+    Args:
+        k: Number of sources requested.
+
+    Raises:
+        ValueError: If k is negative, a boolean, or not an integer.
+    """
     if isinstance(k, bool) or not isinstance(k, int) or k < 0:
         raise ValueError("k must be a nonnegative integer")
 
@@ -59,7 +66,11 @@ class Bm25:
 
     @property
     def index_data(self) -> dict[str, Any]:
-        """Return the state required to restore retrieval."""
+        """Return the state required to restore retrieval.
+
+        Returns:
+            Index chunks, postings, lengths, and BM25 parameters.
+        """
         return {
             "chunks": self.chunks,
             "inverted": self.inverted,

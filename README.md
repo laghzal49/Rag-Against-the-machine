@@ -20,6 +20,19 @@ files under `data/datasets/{UnansweredQuestions,AnsweredQuestions}/`. The raw
 corpus, datasets, generated index, search results, and model weights are not part
 of the Git submission.
 
+For a fresh checkout, download the supplied vLLM archive before indexing:
+
+```bash
+mkdir -p data/raw
+wget -q https://cdn.intra.42.fr/document/document/54840/vllm-0.10.1.zip \
+  -O /tmp/vllm-0.10.1.zip
+unzip -q /tmp/vllm-0.10.1.zip -d data/raw/
+```
+
+If the default corpus is absent, `index` downloads the same archive
+automatically. The explicit commands above are useful when preparing an
+offline evaluation workspace.
+
 ```bash
 uv sync
 uv run python -m src index --max_chunk_size 2000
@@ -50,8 +63,8 @@ Use separate output directories for datasets that share a filename. The answer
 dataset command runs the local model for every result and may take much longer
 than retrieval. `search` and `answer` print JSON to standard output; the dataset
 commands write a JSON file named after their input file. All commands run as
-`uv run python -m src <command>`. Index and search commands accept an optional
-`--index_path`; `index` also accepts `--data_path`. Dataset input and output paths
+`uv run python -m src <command>`. `search` accepts an optional `--index_path`,
+and `index` accepts `--data_path`. Dataset input and output paths
 are supplied as CLI arguments.
 
 The Makefile provides `install`, `run`, `debug`, `clean`, and `lint`. For example,
@@ -127,7 +140,8 @@ set has 100 questions; the public code set has 99.
 | 2,000 characters | 7.56 s | 85.0% | 82.8% |
 | 1,000 characters | 10.35 s | 84.0% | 71.7% |
 
-At 2,000 characters the index contained 13,717 chunks from 1,969 files. The
+At 2,000 characters the index contained 13,717 chunks; it scanned 1,969 files,
+of which 1,847 contributed nonempty chunks. The
 two dataset search commands took about 2.3 and 2.2 seconds respectively,
 including separate process startup and index loading. These local measurements
 are below the subject's 300-second indexing and 90-second retrieval limits.
@@ -152,8 +166,10 @@ also use different vocabulary; indexing full identifiers and their component
 words helps match both. Lexical retrieval still depends on term overlap.
 
 The answer model can produce incomplete wording despite relevant evidence.
-Its prompt is tokenized with a maximum input length; long context can be
-truncated, so lower-ranked sources may not reach the model. Verify grounding
+Source text is trimmed before chat formatting, and the Transformers
+text-generation pipeline limits the prompt to 2,048 tokens and the answer to
+150 tokens by default; long context can be truncated, so
+lower-ranked sources may not reach the model. Verify grounding
 against the returned source spans. Empty queries and zero-result requests
 return empty sources or an insufficient-evidence answer; bad paths and malformed
 JSON are reported as errors without an unhandled traceback.

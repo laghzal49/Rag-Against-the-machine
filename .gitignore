@@ -3,7 +3,17 @@ __pycache__/
 *.py[cod]
 .mypy_cache/
 .pytest_cache/
+/data/raw/**
+!/data/raw/.gitkeep
+/data/processed/**
+!/data/processed/.gitkeep
+/data/datasets/**
+!/data/datasets/.gitkeep
+/data/output/**
+!/data/output/.gitkeep
 evaluations/
 exams/
 *.zip
+/moulinette-ubuntu
+/moulinette-fedora
 !.gitkeep

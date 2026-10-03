@@ -20,11 +20,23 @@ def evaluate(
     """
     search = read_json_file(student_search_results_path, StudentSearchResults)
     data = read_json_file(dataset_path, RagDataset)
+    k_all = [1, 3, 5, 10]
+    recal_call = dict()
     result = evaluate_dataset(
-        data.rag_questions,
-        search.search_results,
-        search.k if k is None else k,
+        data.rag_questions, search.search_results, search.k if k is None else k
     )
+
+    for recall in k_all:
+        recal_call[recall] = evaluate_dataset(
+            data.rag_questions,
+            search.search_results,
+            recall,
+        )
+        r = recal_call[recall]
+        print(f"Recall@{recall}: {r} ({round(recal_call[recall] * 100, 2)}%)")
     print(
-        f"Recall @{search.k if k is None else k} = {round(result * 100, 2)}%"
+        "----------------------------------------------------------------\n"
+        f"Recall@{search.k if k is None else k}: {result}"
+        f" ({round(result * 100, 2)}%)"
+        "\n----------------------------------------------------------------\n"
     )

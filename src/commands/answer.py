@@ -19,8 +19,6 @@ def answer(
     Args:
         question: Question to answer from retrieved evidence.
         k: Maximum number of evidence sources.
-        index_path: Path to a trusted local BM25 index.
-
     Raises:
         FileNotFoundError: If the index does not exist.
         ValueError: If k, source spans, or token budget are invalid.

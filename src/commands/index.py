@@ -1,4 +1,5 @@
 from ..indexing import Indexer
+from ..indexing.corpus import ensure_default_corpus
 
 INDEX_PATH = "data/processed/index.pkl"
 
@@ -17,6 +18,7 @@ def index(
         ValueError: If the source path or chunk size is invalid.
         OSError: If the index cannot be saved.
     """
+    ensure_default_corpus(data_path)
     indexer = Indexer(max_size_chunks=max_chunk_size, path=data_path)
     indexer.save(str(INDEX_PATH))
     print(f"index saved under {INDEX_PATH}")
