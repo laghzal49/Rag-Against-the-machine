@@ -10,9 +10,7 @@ from ..retrieval import Bm25, one_question
 class ContextBuilder:
     """Retrieve and format exact source passages for a language model."""
 
-    def context(
-        self, question: UnansweredQuestion, k: int, bm25: Bm25
-    ) -> str:
+    def context(self, question: UnansweredQuestion, k: int, bm25: Bm25) -> str:
         """Retrieve sources and format their exact passages as context.
 
         Args:

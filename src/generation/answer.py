@@ -43,8 +43,11 @@ class Answer(ContextBuilder):
             ("max_new_tokens", max_new_tokens),
             ("max_input_tokens", max_input_tokens),
         ):
-            if (isinstance(value, bool) or not isinstance(value, int)
-                    or value < 1):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 1
+            ):
                 raise ValueError(f"{name} must be a positive integer")
 
         self.generator = pipeline("text-generation", model=model_name)
@@ -52,15 +55,14 @@ class Answer(ContextBuilder):
         if tokenizer is None:
             raise ValueError("The model has no tokenizer")
         self.tokenizer = tokenizer
-        self.tokenizer.truncation_side = "right"
         self.max_new_tokens = max_new_tokens
-        available = (
+        max_prompt_tokens = (
             self.generator.model.config.max_position_embeddings
             - max_new_tokens
         )
-        if available < 1:
+        if max_prompt_tokens < 1:
             raise ValueError("No model context remains for the prompt")
-        self.max_input_tokens = min(max_input_tokens, available)
+        self.max_input_tokens = min(max_input_tokens, max_prompt_tokens)
 
     def generate(self, question: UnansweredQuestion, context: str) -> str:
         """Answer from the leading context within the model token limit.
@@ -94,7 +96,8 @@ class Answer(ContextBuilder):
                 enable_thinking=False,
             )
         )
-        context_budget = self.max_input_tokens - overhead - 32
+        margin_safety = 32
+        context_budget = self.max_input_tokens - overhead - margin_safety
         if context_budget < 1:
             return NO_EVIDENCE
 
@@ -111,11 +114,6 @@ class Answer(ContextBuilder):
         messages[1]["content"] += context
         output = self.generator(
             messages,
-            tokenizer_encode_kwargs={
-                "truncation": True,
-                "max_length": self.max_input_tokens,
-                "enable_thinking": False,
-            },
             max_new_tokens=self.max_new_tokens,
             return_full_text=False,
         )
