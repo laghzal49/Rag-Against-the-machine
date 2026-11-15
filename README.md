@@ -1,46 +1,83 @@
-*This project has been created as part of the 42 curriculum by tlaghzal.*
-
 # RAG Against the Machine
 
-## Description
+**Code-aware retrieval-augmented generation (RAG) for understanding a real Python codebase.**
 
-This project answers questions about the supplied vLLM 0.10.1 codebase. It reads
-Python, Markdown, and text files, stores searchable source chunks, retrieves
-ranked passages with BM25, and gives those passages to a local
-`Qwen/Qwen3-0.6B` model. Retrieval results and answers use the JSON structures
-specified in the subject. The default index covers `data/raw/` and is saved at
-`data/processed/index.pkl`.
+A local, end-to-end pipeline that indexes the **vLLM 0.10.1** source tree, retrieves relevant code and documentation with **BM25**, and answers questions with **Qwen3-0.6B**. Built for the [42 Network](https://42.fr/) RAG Against the Machine project.
 
-## Instructions
+**Python 3.10+ · Tree-sitter · BM25 · Qwen3-0.6B · Pydantic · CLI**
 
-Use Python 3.10 or later and [uv](https://docs.astral.sh/uv/). The first `uv sync`
-may download dependencies; the first answer may download the Qwen model. Place
-the supplied vLLM tree at `data/raw/vllm-0.10.1/` and the public question JSON
-files under `data/datasets/{UnansweredQuestions,AnsweredQuestions}/`. The raw
-corpus, datasets, generated index, search results, and model weights are not part
-of the Git submission.
+> **Measured on the supplied public evaluation sets:** **85.0% documentation Recall@5** and **82.8% code Recall@5**, using a 2,000-character chunk size. These are retrieval scores, not end-to-end answer-accuracy scores.
 
-For a fresh checkout, download the supplied vLLM archive before indexing:
+## Why this project?
 
-```bash
-mkdir -p data/raw
-wget -q https://cdn.intra.42.fr/document/document/54840/vllm-0.10.1.zip \
-  -O /tmp/vllm-0.10.1.zip
-unzip -q /tmp/vllm-0.10.1.zip -d data/raw/
+Searching a large codebase is different from searching ordinary prose. Function names, file paths, signatures, and implementation details matter. This project combines:
+
+- **Syntax-aware chunking:** Tree-sitter keeps Python code organized around top-level syntax nodes; Markdown and text use overlapping windows.
+- **Code-aware tokenization:** index complete identifiers and their snake_case / CamelCase components.
+- **Fast, inspectable retrieval:** a custom inverted index with BM25 scoring, not an external vector database.
+- **Traceable evidence:** every retrieved result contains the original file path and exact character range.
+- **Local answer generation:** a Qwen3-0.6B model answers using the retrieved source text.
+- **Reproducible evaluation:** CLI commands evaluate retrieval with Recall@k on the project's labeled datasets.
+
+## How it works
+
+```mermaid
+flowchart LR
+    A["Python, Markdown, text files"] --> B["File discovery + chunking"]
+    B --> C["Code-aware tokenization"]
+    C --> D["BM25 inverted index"]
+    Q["Question"] --> E["Ranked retrieval"]
+    D --> E
+    E --> F["Source paths + character spans"]
+    F --> G["Source context builder"]
+    G --> H["Local Qwen3-0.6B"]
+    H --> I["Structured answer JSON"]
+    F --> J["Recall@k evaluation"]
 ```
 
-If the default corpus is absent, `index` downloads the same archive
-automatically. The explicit commands above are useful when preparing an
-offline evaluation workspace.
+**Source provenance is preserved:** a result's `file_path`, `first_character_index`, and `last_character_index` locate the exact original passage (end index exclusive). This matters for both grounding and scoring.
+
+## Quick start
+
+**Requirements:** Python 3.10+, [uv](https://docs.astral.sh/uv/), and enough disk/RAM for PyTorch and the local Qwen model. The default install uses the CPU PyTorch package index on Linux. Initial dependency/model downloads require an internet connection.
 
 ```bash
+git clone https://github.com/laghzal49/rag-v2.git
+cd rag-v2
 uv sync
-uv run python -m src index --max_chunk_size 2000
-uv run python -m src search "How to configure OpenAI server?" --k 5
-uv run python -m src answer "How to configure OpenAI server?" --k 5
 ```
 
-Run a public dataset from indexing through local recall measurement:
+### Try it with your own documents
+
+You can test the search pipeline without downloading the 42 evaluation corpus or a language model:
+
+```bash
+mkdir -p example_corpus
+printf '# HTTP server\nThe server accepts requests and returns responses.\n' > example_corpus/notes.md
+
+uv run python -m src index --data_path example_corpus --max_chunk_size 2000
+uv run python -m src search "What does the HTTP server do?" --k 5
+```
+
+To generate an answer as well (downloads the Qwen model on first use):
+
+```bash
+uv run python -m src answer "What does the HTTP server do?" --k 5
+```
+
+The index is written to `data/processed/index.pkl`. The example corpus is only a quick local test; the reported benchmarks use the supplied vLLM corpus.
+
+### Run on the vLLM evaluation corpus
+
+Place the **vLLM 0.10.1** snapshot at `data/raw/vllm-0.10.1/`. When indexing the default `data/raw/` path, the application attempts to download the course-provided archive automatically if it is missing. That archive URL is hosted by 42 and may not be accessible to everyone.
+
+```bash
+uv run python -m src index --max_chunk_size 2000
+uv run python -m src search "How do I configure the OpenAI-compatible server?" --k 5
+uv run python -m src answer "How do I configure the OpenAI-compatible server?" --k 5
+```
+
+To evaluate retrieval, put the appropriate public question JSON files under `data/datasets/UnansweredQuestions/` and `data/datasets/AnsweredQuestions/`. The course corpus and question datasets are **not included** in this Git repository.
 
 ```bash
 uv run python -m src search_dataset \
@@ -52,137 +89,79 @@ uv run python -m src evaluate \
   --student_search_results_path data/output/search_results/UnansweredQuestions/dataset_docs_public.json \
   --dataset_path data/datasets/AnsweredQuestions/dataset_docs_public.json \
   --k 5
-
-uv run python -m src answer_dataset \
-  --student_search_results_path data/output/search_results/UnansweredQuestions/dataset_docs_public.json \
-  --save_directory data/output/search_results_and_answer/UnansweredQuestions
 ```
 
-Replace `docs` with `code` in the dataset filenames to measure code retrieval.
-Use separate output directories for datasets that share a filename. The answer
-dataset command runs the local model for every result and may take much longer
-than retrieval. `search` and `answer` print JSON to standard output; the dataset
-commands write a JSON file named after their input file. All commands run as
-`uv run python -m src <command>`. `search` accepts an optional `--index_path`,
-and `index` accepts `--data_path`. Dataset input and output paths
-are supplied as CLI arguments.
+Replace `docs` with `code` to run the code-question set. `answer_dataset` generates answers for a saved retrieval-results file; it invokes the local model once per question and is considerably slower than retrieval.
 
-The Makefile provides `install`, `run`, `debug`, `clean`, and `lint`. For example,
-`make lint` runs flake8 and mypy with the subject's required flags. The generated
-index uses pickle and should only be loaded from a trusted local build.
+## Benchmark results
 
-## System architecture
+Measured by the project author on the supplied **vLLM 0.10.1** corpus using **k=5** and the course's **2,000-character maximum source context**. These are local measurements, not independently reproduced benchmark results.
 
-```text
-data/raw/ Python, Markdown, text
-             |
-             v
-   file discovery and chunking
-             |
-             v
-   tokenization and BM25 index ----> data/processed/index.pkl
-             |
-      single or dataset search
-             |
-             v
-   ranked source file paths and character spans
-             |
-       source text loading
-             |
-             v
-   Qwen/Qwen3-0.6B generation ----> answer JSON
-```
-
-`src/indexing/` discovers files and builds the index. `src/chunking/` splits
-them, `src/tokenizer/` prepares terms, and `src/retrieval/` ranks chunks.
-`src/generation/` reads the returned source spans and generates answers.
-`src/models/` contains the Pydantic contracts for questions, sources, search
-results, and answers. `src/commands/` exposes the six Python Fire commands;
-`src/evaluation/` implements a local recall calculation.
-
-## Chunking strategy
-
-Python files use Tree-sitter top-level syntax nodes. Adjacent nodes are grouped
-until the configured limit; a node larger than the limit is split into windows.
-Markdown and plain text use character windows with up to 200 characters of
-overlap. The default maximum is 2,000 characters, and validation rejects larger
-values. Source offsets are half-open Unicode character positions, so
-`file_text[first_character_index:last_character_index]` reproduces a chunk.
-Tree-sitter's byte offsets are converted before storing them. Source paths retain
-the `data/raw/...` prefix expected by the evaluator.
-
-## Retrieval method and design decisions
-
-The tokenizer lowercases text, filters common English stop words, and keeps
-identifiers both whole and split at underscores or CamelCase boundaries. It
-indexes passage text together with its source path. An inverted index finds
-candidate chunks; BM25 scores term matches using frequency, inverse document
-frequency, and document length normalization (`k1=1.5`, `b=0.5`). Results are
-sorted by descending score and limited to `k` source spans.
-
-Keeping exact paths and character ranges lets the evaluator check overlap and
-lets generation read the original text. Lexical retrieval is fast and
-inspectable, but a paraphrase with no shared terms may miss a relevant passage.
-Overlapping prose windows help avoid losing context at a boundary, while smaller
-windows increase the number of candidate chunks. The local generator defaults
-to `Qwen/Qwen3-0.6B`; its code also accepts a model name when constructed in
-Python, while the CLI uses the default.
-
-## Performance analysis
-
-The following measurements used the supplied vLLM 0.10.1 corpus and public
-question datasets on this machine. Each row used a freshly built index, `k=5`,
-and the supplied evaluator with `--max_context_length 2000`. The public docs
-set has 100 questions; the public code set has 99.
-
-| Maximum chunk size | Index time | Docs recall@5 | Code recall@5 |
+| Maximum chunk size | Index time | Docs Recall@5 | Code Recall@5 |
 | ---: | ---: | ---: | ---: |
-| 2,000 characters | 7.56 s | 85.0% | 82.8% |
+| **2,000 characters** | **7.56 s** | **85.0%** | **82.8%** |
 | 1,000 characters | 10.35 s | 84.0% | 71.7% |
 
-At 2,000 characters the index contained 13,717 chunks; it scanned 1,969 files,
-of which 1,847 contributed nonempty chunks. The
-two dataset search commands took about 2.3 and 2.2 seconds respectively,
-including separate process startup and index loading. These local measurements
-are below the subject's 300-second indexing and 90-second retrieval limits.
-Smaller chunks reduced public recall, especially for code, and roughly doubled
-the number of indexed chunks. The correction sheet grades private datasets,
-so these public scores do not establish private recall or answer quality. Its
-thresholds are docs recall@5 of at least 80% and code recall@5 of at least 50%.
+At 2,000 characters, the index contained **13,717 chunks**, built from **1,847 nonempty source files** (1,969 scanned). The public evaluation sets contained **100 documentation questions** and **99 code questions**. Dataset retrieval runs took approximately **2.3 s (docs)** and **2.2 s (code)**, including process startup and index loading.
 
-To reproduce the public scores, build an index with the chosen chunk size, run
-`search_dataset` for both public unanswered datasets with `--k 5`, then run
-`evaluate` against the corresponding answered datasets. The evaluator used for
-the table was the separate supplied `moulinette` executable; the implementation
-does not import or call it. The local `evaluate` command reports the same
-recall@5 values for these public results.
+**What this tells us:** smaller chunks were not automatically better. They increased the number of passages but substantially reduced recall on code questions. The scores are for **retrieval only**; they do not prove that generated answers are accurate or that private evaluation sets have the same scores.
 
-## Challenges faced and limitations
+## Engineering details
 
-Tree-sitter identifies syntax locations in UTF-8 bytes, while the required
-output uses character indices. Converting each node boundary before storing a
-span keeps the returned source slice exact. The code and documentation datasets
-also use different vocabulary; indexing full identifiers and their component
-words helps match both. Lexical retrieval still depends on term overlap.
+| Stage | Implementation | Reason |
+| --- | --- | --- |
+| Discovery | Scan Python, Markdown, and plain-text files | Supports both code and docs |
+| Chunking | Tree-sitter for Python; overlapping text windows | Respect code structure and avoid cutting prose at arbitrary boundaries |
+| Tokenization | Lowercase, stop-word filtering, whole/split identifiers | Match function names and natural-language queries |
+| Index | Custom inverted index and BM25 (`k1=1.5`, `b=0.5`) | Explainable lexical relevance scoring |
+| Retrieval | Top-k ranked source spans | Preserve inspectable provenance |
+| Generation | Qwen3-0.6B via Transformers | Run answers locally with retrieved context |
+| Schemas | Pydantic models | Validate input, results and generated-output structures |
+| Evaluation | Recall@1/3/5/10 | Measure source retrieval separately from generation |
 
-The answer model can produce incomplete wording despite relevant evidence.
-Source text is trimmed before chat formatting, and the Transformers
-text-generation pipeline limits the prompt to 2,048 tokens and the answer to
-150 tokens by default; long context can be truncated, so
-lower-ranked sources may not reach the model. Verify grounding
-against the returned source spans. Empty queries and zero-result requests
-return empty sources or an insufficient-evidence answer; bad paths and malformed
-JSON are reported as errors without an unhandled traceback.
+### Repository map
 
-## Resources and AI use
+```text
+src/
+├── chunking/       # Tree-sitter and text chunking
+├── tokenizer/      # Identifier-aware lexical analysis
+├── indexing/       # Corpus discovery and index construction
+├── retrieval/      # Custom BM25 and ranked search
+├── generation/     # Context building and local Qwen answers
+├── models/         # Pydantic data contracts
+├── evaluation/     # Recall metrics
+├── commands/       # Fire CLI commands
+└── __main__.py     # CLI entry point
+```
 
+### CLI reference
+
+| Command | Purpose |
+| --- | --- |
+| `index` | Build/persist an index from source files |
+| `search` | Retrieve ranked, source-linked passages |
+| `answer` | Retrieve and generate a local answer |
+| `search_dataset` | Run retrieval over a JSON question set |
+| `answer_dataset` | Generate answers for saved search results |
+| `evaluate` | Calculate retrieval Recall@k against labeled sources |
+
+Run `uv run python -m src --help` for the command list. The `Makefile` also provides `install`, `run`, `debug`, `lint`, and `clean` tasks.
+
+## Design trade-offs & limitations
+
+- **Lexical, not semantic retrieval:** BM25 is fast and debuggable, but paraphrases without overlapping terms can be missed.
+- **Finite context:** generation limits the input to 2,048 tokens and new text to 150 tokens by default. Lower-ranked sources may be truncated.
+- **Answer grounding is not guaranteed:** generated text should be checked against the reported source spans; an insufficient-evidence answer is possible.
+- **Local resources required:** downloading and running Qwen/PyTorch may be slow or memory-intensive on some systems.
+- **Trusted indexes only:** the persisted index uses Python `pickle`. **Never load index files from untrusted sources**; rebuild an index from trusted source files instead.
+- **Corpus distribution:** vLLM source and the 42 question/evaluation datasets must be obtained separately.
+
+## Credits and references
+
+Created for the **42 Network** curriculum by **tlaghzal**.
+
+- [vLLM](https://github.com/vllm-project/vllm) · [Tree-sitter](https://tree-sitter.github.io/tree-sitter/) · [BM25](https://nlp.stanford.edu/IR-book/html/htmledition/okapi-bm25-a-non-binary-model-1.html)
+- [Qwen3-0.6B model](https://huggingface.co/Qwen/Qwen3-0.6B) · [Pydantic](https://docs.pydantic.dev/) · [uv](https://docs.astral.sh/uv/)
 - [42 project subject](https://projects.intra.42.fr/projects/rag-against-the-machine)
-- [vLLM repository](https://github.com/vllm-project/vllm)
-- [Tree-sitter documentation](https://tree-sitter.github.io/tree-sitter/)
-- [BM25 explanation](https://nlp.stanford.edu/IR-book/html/htmledition/okapi-bm25-a-non-binary-model-1.html)
-- [Qwen3-0.6B model card](https://huggingface.co/Qwen/Qwen3-0.6B)
-- [Pydantic documentation](https://docs.pydantic.dev/)
 
-AI assisted with documentation, type annotations, edge-case review, and style
-checks. The implementation and reported measurements remain available for
-inspection and independent verification.
+AI assistance was used for documentation, type annotations, edge-case review, and style checks. Implementation details and the reported measurements are documented for review and independent reproduction.
