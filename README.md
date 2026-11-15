@@ -1,6 +1,6 @@
 # RAG Against the Machine
 
-**Code-aware retrieval-augmented generation (RAG) for understanding a real Python codebase.**
+**Code-aware RAG for vLLM using Tree-sitter, custom BM25 and local Qwen3-0.6B, achieving 85% docs and 82.8% code Recall@5 on public datasets.**
 
 A local, end-to-end pipeline that indexes the **vLLM 0.10.1** source tree, retrieves relevant code and documentation with **BM25**, and answers questions with **Qwen3-0.6B**. Built for the [42 Network](https://42.fr/) RAG Against the Machine project.
 
@@ -42,7 +42,7 @@ flowchart LR
 **Requirements:** Python 3.10+, [uv](https://docs.astral.sh/uv/), and enough disk/RAM for PyTorch and the local Qwen model. The default install uses the CPU PyTorch package index on Linux. Initial dependency/model downloads require an internet connection.
 
 ```bash
-git clone https://github.com/laghzal49/rag-v2.git
+git clone https://github.com/laghzal49/Rag-Against-the-machine.git
 cd rag-v2
 uv sync
 ```
